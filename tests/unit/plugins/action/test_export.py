@@ -16,8 +16,10 @@ __metaclass__ = type
 
 
 from ansible_collections.ansible.platform.plugins.action.export import (
+    CONTROLLER_ORGANIZATION_ENDPOINT,
     GROUP_EXPORT_FIELDS,
     HOST_EXPORT_FIELDS,
+    PROJECT_ORGANIZATION_CACHE,
     ActionModule,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
@@ -77,6 +79,22 @@ class TestCleanResource:
         assert result["inventory"] == "Production"
         assert result["project"] == "Demo Project"
         assert result["organization"] == "Default"
+
+    def test_inventory_source_export_qualifies_source_project(self):
+        resource = {
+            "name": "Source",
+            "source_project": 7,
+            "summary_fields": {"source_project": {"id": 7, "name": "Shared Project"}},
+        }
+        name_cache = {
+            "api/controller/v2/projects/": {7: "Shared Project"},
+            PROJECT_ORGANIZATION_CACHE: {7: 2},
+            CONTROLLER_ORGANIZATION_ENDPOINT: {2: "Other Org"},
+        }
+
+        result = clean_resource(resource, name_cache, "inventory_sources")
+
+        assert result["source_project"] == "Shared Project++Other Org"
 
     def test_preserves_fk_id_on_cache_miss(self):
         resource = {"name": "Test", "inventory": 999}

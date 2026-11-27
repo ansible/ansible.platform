@@ -19,6 +19,22 @@ from ....platform.types import EndpointOperation, TransformContext
 logger = logging.getLogger(__name__)
 
 
+def _lookup_source_project_id(manager, source_project, organization_id=None):
+    """Resolve a source project by name, ID, or ``Project++Organization`` reference."""
+    source_project = str(source_project)
+    lookup_kwargs = {"service": "controller", "require_unique": True}
+    if "++" in source_project:
+        project_name, separator, organization_ref = source_project.partition("++")
+        if not separator or not project_name or not organization_ref:
+            raise ValueError("Source project references must use the form 'Project++Organization'")
+        # Qualified references carry their own organization scope. Disable the
+        # numeric-ID shortcut so a project named only with digits is queried by name.
+        lookup_kwargs["numeric_is_id"] = False
+    elif organization_id is not None:
+        lookup_kwargs["extra_query_params"] = {"organization": organization_id}
+    return manager.lookup_resource_id("projects", "name", source_project, **lookup_kwargs)
+
+
 @dataclass
 class APIInventorySource_v2(BaseTransformMixin):
     """API v2 representation of a Controller inventory source."""
@@ -80,9 +96,9 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
 
         # Organization is a lookup-only compatibility parameter. Controller
         # inventory sources inherit their organization from the inventory, so
-        # it must not be included in the inventory source payload. When an
-        # inventory or source project is provided by name, however, use the
-        # organization to disambiguate resources with duplicate names.
+        # it must not be included in the inventory source payload. It scopes
+        # only the inventory lookup; source projects may belong to another
+        # organization.
         organization = getattr(ansible_instance, "organization", None)
         organization_id = None
         if organization is not None:
@@ -129,14 +145,10 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         source_project = getattr(ansible_instance, "source_project", None)
         if source_project is not None and op not in ("find", "delete"):
             if manager is not None and not str(source_project).strip().isdigit():
-                api_data["source_project"] = manager.lookup_resource_id(
-                    "projects",
-                    "name",
-                    source_project,
-                    service="controller",
-                    extra_query_params=organization_scope,
-                    require_unique=True,
-                )
+                # Plain names remain scoped to the requested inventory
+                # organization for compatibility. Qualified references carry
+                # their own organization and may select a cross-org project.
+                api_data["source_project"] = _lookup_source_project_id(manager, source_project, organization_id=organization_id)
             else:
                 api_data["source_project"] = int(source_project)
 
