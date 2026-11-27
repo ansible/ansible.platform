@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - >-
+    rulebook_activation - add ``skip_audit_events`` and support resolving
+    ``rule_engine_credential`` by name while retaining
+    ``rule_engine_credential_id``.
+...

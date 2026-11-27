@@ -27,6 +27,8 @@ class AnsibleRulebookActivation:
     event_streams: Optional[List[Dict[str, Any]]] = None
     log_level: Optional[str] = None
     enable_persistence: Optional[bool] = None
+    skip_audit_events: Optional[bool] = None
+    rule_engine_credential: Optional[str] = None
     rule_engine_credential_id: Optional[int] = None
     restart_on_project_update: Optional[bool] = None
     state: Optional[str] = None
