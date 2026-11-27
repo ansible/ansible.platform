@@ -33,6 +33,58 @@ class TestEdaProjectTransform(unittest.TestCase):
         manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default", service="eda", require_unique=True)
         manager.search_api.assert_called_once_with("config", service="eda")
 
+    def test_from_ansible_data_maps_scm_options_and_signature_credential(self):
+        manager = MagicMock()
+        manager.cache = {"capability:eda:project_organization": True}
+        manager.lookup_resource_id.side_effect = lambda endpoint, lookup_field, value, **kwargs: {
+            "SCM Credential": 42,
+            "Signing Credential": 43,
+            "Default": 901,
+        }[str(value)]
+        project = AnsibleEdaProject(
+            name="project",
+            credential="SCM Credential",
+            signature_validation_credential="Signing Credential",
+            organization_name="Default",
+            scm_refspec="+refs/heads/main:refs/remotes/origin/main",
+            verify_ssl=False,
+        )
+
+        api_data = EdaProjectTransformMixin_v1.from_ansible_data(project, {"manager": manager})
+
+        self.assertEqual(api_data.eda_credential_id, 42)
+        self.assertEqual(api_data.signature_validation_credential_id, 43)
+        self.assertEqual(api_data.organization_id, 901)
+        self.assertEqual(api_data.scm_refspec, "+refs/heads/main:refs/remotes/origin/main")
+        self.assertFalse(api_data.verify_ssl)
+
+    def test_endpoint_operations_include_new_project_fields(self):
+        operations = EdaProjectTransformMixin_v1.get_endpoint_operations()
+
+        for operation in ("create", "update"):
+            fields = operations[operation].fields
+            self.assertIn("scm_refspec", fields)
+            self.assertIn("verify_ssl", fields)
+            self.assertIn("signature_validation_credential_id", fields)
+
+    def test_from_api_hydrates_scm_options_and_signature_validation_credential(self):
+        manager = MagicMock()
+        manager.search_api.return_value = {"results": [{"id": 43, "name": "Signing Credential"}]}
+
+        project = EdaProjectTransformMixin_v1.from_api(
+            {
+                "name": "project",
+                "signature_validation_credential_id": 43,
+                "scm_refspec": "+refs/heads/main:refs/remotes/origin/main",
+                "verify_ssl": False,
+            },
+            {"manager": manager},
+        )
+
+        self.assertEqual(project.signature_validation_credential, "Signing Credential")
+        self.assertEqual(project.scm_refspec, "+refs/heads/main:refs/remotes/origin/main")
+        self.assertFalse(project.verify_ssl)
+
     def test_from_ansible_data_omits_organization_when_eda_config_endpoint_is_missing(self):
         manager = MagicMock()
         manager.cache = {}

@@ -114,7 +114,10 @@ class APIEdaProject_v1(BaseTransformMixin):
     url: Optional[str] = None
     proxy: Optional[str] = None
     scm_branch: Optional[str] = None
+    scm_refspec: Optional[str] = None
+    verify_ssl: Optional[bool] = None
     eda_credential_id: Optional[int] = None
+    signature_validation_credential_id: Optional[int] = None
     organization_id: Optional[int] = None
     update_revision_on_launch: Optional[bool] = None
     scm_update_cache_timeout: Optional[int] = None
@@ -139,13 +142,24 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
 
         Resolves foreign key fields:
         - credential (name) -> eda_credential_id (int) via EDA credentials endpoint
+        - signature_validation_credential (name) -> signature_validation_credential_id (int)
         - organization_name (name) -> organization_id (int) when supported by this EDA version
         """
         api_data: Dict[str, Any] = {}
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
 
         # Direct field mappings
-        for field in ("name", "description", "url", "proxy", "scm_branch", "update_revision_on_launch", "scm_update_cache_timeout"):
+        for field in (
+            "name",
+            "description",
+            "url",
+            "proxy",
+            "scm_branch",
+            "scm_refspec",
+            "verify_ssl",
+            "update_revision_on_launch",
+            "scm_update_cache_timeout",
+        ):
             val = getattr(ansible_instance, field, None)
             if val is not None:
                 api_data[field] = val
@@ -159,6 +173,13 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
         credential = getattr(ansible_instance, "credential", None)
         if credential is not None:
             api_data["eda_credential_id"] = resolve_foreign_key_id(manager, "eda-credentials", "name", credential, service="eda")
+
+        # Resolve signature validation credential name/ID -> API foreign key.
+        signature_validation_credential = getattr(ansible_instance, "signature_validation_credential", None)
+        if signature_validation_credential is not None:
+            api_data["signature_validation_credential_id"] = resolve_foreign_key_id(
+                manager, "eda-credentials", "name", signature_validation_credential, service="eda"
+            )
 
         # Resolve organization_name -> organization_id
         organization_name = getattr(ansible_instance, "organization_name", None)
@@ -188,7 +209,10 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
                     "url",
                     "proxy",
                     "scm_branch",
+                    "scm_refspec",
+                    "verify_ssl",
                     "eda_credential_id",
+                    "signature_validation_credential_id",
                     "organization_id",
                     "update_revision_on_launch",
                     "scm_update_cache_timeout",
@@ -205,7 +229,10 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
                     "url",
                     "proxy",
                     "scm_branch",
+                    "scm_refspec",
+                    "verify_ssl",
                     "eda_credential_id",
+                    "signature_validation_credential_id",
                     "organization_id",
                     "update_revision_on_launch",
                     "scm_update_cache_timeout",
@@ -277,6 +304,8 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
             "url": api_data.get("url"),
             "proxy": api_data.get("proxy"),
             "scm_branch": api_data.get("scm_branch"),
+            "scm_refspec": api_data.get("scm_refspec"),
+            "verify_ssl": api_data.get("verify_ssl"),
             "update_revision_on_launch": api_data.get("update_revision_on_launch"),
             "scm_update_cache_timeout": api_data.get("scm_update_cache_timeout"),
             "id": api_data.get("id"),
@@ -284,9 +313,19 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
 
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
         credential = _related_resource_name(manager, api_data, "eda_credential_id", "eda_credential", "eda-credentials", "eda")
+        signature_validation_credential = _related_resource_name(
+            manager,
+            api_data,
+            "signature_validation_credential_id",
+            "signature_validation_credential",
+            "eda-credentials",
+            "eda",
+        )
         organization = _related_resource_name(manager, api_data, "organization_id", "organization", "organizations", "eda")
         if credential is not None:
             ansible_data["credential"] = credential
+        if signature_validation_credential is not None:
+            ansible_data["signature_validation_credential"] = signature_validation_credential
         if organization is not None:
             ansible_data["organization_name"] = organization
 

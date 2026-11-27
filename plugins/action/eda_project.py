@@ -179,6 +179,7 @@ class ActionModule(BaseResourceActionPlugin):
         manager = getattr(self, "_client", None)
         fk_fields = {
             "credential": ("eda-credentials", "eda"),
+            "signature_validation_credential": ("eda-credentials", "eda"),
         }
         for field, (endpoint, service) in fk_fields.items():
             desired_value = comparable_data.get(field)
@@ -319,6 +320,7 @@ class ActionModule(BaseResourceActionPlugin):
             # updates, where the manager would otherwise not run the transform.
             for field, (endpoint, service) in {
                 "credential": ("eda-credentials", "eda"),
+                "signature_validation_credential": ("eda-credentials", "eda"),
             }.items():
                 value = validated_params.get(field)
                 if value is not None:
