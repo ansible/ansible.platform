@@ -260,6 +260,14 @@ RESOURCE_ASSOCIATIONS_INVENTORY = [
 HOST_EXPORT_FIELDS = {"name", "description", "enabled", "instance_id", "variables"}
 GROUP_EXPORT_FIELDS = {"name", "description", "variables"}
 
+# API fields that are redundant or refer to resources on the source instance.
+RESOURCE_FIELDS_TO_SKIP = {
+    "authenticators": frozenset({"slug"}),
+    "credentials": frozenset({"cloud", "kind", "kubernetes"}),
+    "instance_groups": frozenset({"policy_instance_list", "instances"}),
+    "users": frozenset({"authenticator_uid", "authenticators"}),
+}
+
 
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "export"
@@ -464,90 +472,91 @@ class ActionModule(BaseResourceActionPlugin):
         assignments = [assignment for assignment in response.get("results", []) if isinstance(assignment, dict)]
         role_definition_cache, object_cache = self._build_role_assignment_export_cache(manager, assignments, max_objects)
         for assignment in assignments:
-            summary = assignment.get("summary_fields", {})
-            role = summary.get("role_definition", {})
-            user = summary.get("user", {})
-            team = summary.get("team", {})
-            content = summary.get("content_object", {})
-            service = content.get("service")
-            model = content.get("model_name")
-            role_content_type = role.get("content_type")
-            role_id = role.get("id")
-            if not role_content_type and role_id is not None:
-                role_content_type = role_definition_cache.get(str(role_id), {}).get("content_type")
-            if not (service and model) and isinstance(role_content_type, str) and "." in role_content_type:
-                service, model = role_content_type.split(".", 1)
-            object_type_path = ROLE_OBJECT_TYPE_MAP.get((service, model))
-            item = {
-                "role_definition": role.get("name", assignment.get("role_definition")),
-            }
-            if res_type == "role_user_assignments":
-                item["user"] = user.get("username", assignment.get("user"))
-            else:
-                team_name = team.get("name", assignment.get("team"))
-                item["team"] = team_name
-                team_org_id = team.get("organization")
-                if isinstance(team_org_id, int):
-                    team_org = name_cache.get(GATEWAY_ORGANIZATION_ENDPOINT, {}).get(team_org_id)
-                    if team_org:
-                        item["team_organization"] = team_org
-            object_id = assignment.get("object_id") or content.get("pk") or content.get("id")
-            object_ansible_id = assignment.get("object_ansible_id")
-            if object_type_path and (object_id is not None or object_ansible_id):
-                object_type, object_endpoint = object_type_path
-                cached_objects = object_cache[object_endpoint]
-                detail = cached_objects["by_id"].get(str(object_id)) if object_id is not None else cached_objects["by_ansible_id"].get(str(object_ansible_id))
-                if isinstance(detail, dict) and detail.get("name"):
-                    object_data = {"name": detail["name"], "type": object_type}
-                    if object_type == "awx.credential":
-                        credential_type = detail.get("credential_type")
-                        if isinstance(credential_type, int):
-                            credential_type = name_cache.get("api/controller/v2/credential_types/", {}).get(credential_type)
-                        if credential_type:
-                            object_data["credential_type"] = credential_type
-                    organization = detail.get("organization")
-                    if isinstance(organization, int):
-                        organization_cache_endpoint = (
-                            GATEWAY_ORGANIZATION_ENDPOINT if object_endpoint.startswith("api/gateway/") else CONTROLLER_ORGANIZATION_ENDPOINT
-                        )
-                        organization = name_cache.get(organization_cache_endpoint, {}).get(organization)
-                        if organization is None:
-                            if not hasattr(self, "_non_restorable_role_assignments"):
-                                self._non_restorable_role_assignments = []
-                            self._non_restorable_role_assignments.append(
-                                dict(item, object_id=object_id, non_restorable_reason="object organization could not be resolved to a portable name")
-                            )
-                            continue
-                    if organization:
-                        object_data["organization"] = organization
-                    if res_type == "role_user_assignments":
-                        item.update({"object_name": object_data["name"], "object_type": object_data["type"]})
-                        if object_data.get("credential_type"):
-                            item["object_credential_type"] = object_data["credential_type"]
-                        if organization:
-                            item["organization"] = organization
-                    else:
-                        item["assignment_objects"] = [object_data]
-                elif assignment.get("object_ansible_id"):
-                    item["object_ansible_id"] = assignment["object_ansible_id"]
-                else:
-                    if not hasattr(self, "_non_restorable_role_assignments"):
-                        self._non_restorable_role_assignments = []
-                    self._non_restorable_role_assignments.append(
-                        dict(item, object_id=object_id, non_restorable_reason="object reference could not be converted to a portable name")
-                    )
-                    continue
-            elif assignment.get("object_ansible_id"):
-                item["object_ansible_id"] = assignment["object_ansible_id"]
-            elif object_id is not None:
+            item = self._convert_assignment(assignment, res_type, name_cache, role_definition_cache, object_cache)
+            if "non_restorable_reason" in item:
                 if not hasattr(self, "_non_restorable_role_assignments"):
                     self._non_restorable_role_assignments = []
-                self._non_restorable_role_assignments.append(
-                    dict(item, object_id=object_id, non_restorable_reason="object reference could not be converted to a portable name")
-                )
-                continue
-            exported.append(item)
+                self._non_restorable_role_assignments.append(item)
+            else:
+                exported.append(item)
         return exported
+
+    @staticmethod
+    def _assignment_object_type_path(role, content, role_definition_cache):
+        """Resolve the assignment target type and API endpoint."""
+        service = content.get("service")
+        model = content.get("model_name")
+        role_content_type = role.get("content_type")
+        role_id = role.get("id")
+        if not role_content_type and role_id is not None:
+            role_content_type = role_definition_cache.get(str(role_id), {}).get("content_type")
+        if not (service and model) and isinstance(role_content_type, str) and "." in role_content_type:
+            service, model = role_content_type.split(".", 1)
+        return ROLE_OBJECT_TYPE_MAP.get((service, model))
+
+    def _convert_assignment(self, assignment, res_type, name_cache, role_definition_cache, object_cache):
+        """Convert one assignment using cached data and flag unresolved references."""
+        summary = assignment.get("summary_fields", {})
+        role = summary.get("role_definition", {})
+        content = summary.get("content_object", {})
+        object_type_path = self._assignment_object_type_path(role, content, role_definition_cache)
+        item = {"role_definition": role.get("name", assignment.get("role_definition"))}
+        if res_type == "role_user_assignments":
+            user = summary.get("user", {})
+            item["user"] = user.get("username", assignment.get("user"))
+        else:
+            team = summary.get("team", {})
+            item["team"] = team.get("name", assignment.get("team"))
+            team_org_id = team.get("organization")
+            if isinstance(team_org_id, int):
+                team_org = name_cache.get(GATEWAY_ORGANIZATION_ENDPOINT, {}).get(team_org_id)
+                if not team_org:
+                    return dict(item, non_restorable_reason="team organization could not be resolved to a portable name")
+                item["team_organization"] = team_org
+
+        object_id = assignment.get("object_id") or content.get("pk") or content.get("id")
+        object_ansible_id = assignment.get("object_ansible_id")
+        detail = None
+        if object_type_path and (object_id is not None or object_ansible_id):
+            object_type, object_endpoint = object_type_path
+            cached_objects = object_cache[object_endpoint]
+            if object_id is not None:
+                detail = cached_objects["by_id"].get(str(object_id))
+            else:
+                detail = cached_objects["by_ansible_id"].get(str(object_ansible_id))
+
+        if not isinstance(detail, dict) or not detail.get("name"):
+            if object_ansible_id:
+                item["object_ansible_id"] = object_ansible_id
+            elif object_id is not None:
+                return dict(item, object_id=object_id, non_restorable_reason="object reference could not be converted to a portable name")
+            return item
+
+        object_data = {"name": detail["name"], "type": object_type}
+        if object_type == "awx.credential":
+            credential_type = detail.get("credential_type")
+            if isinstance(credential_type, int):
+                credential_type = name_cache.get("api/controller/v2/credential_types/", {}).get(credential_type)
+            if credential_type:
+                object_data["credential_type"] = credential_type
+
+        organization = detail.get("organization")
+        if isinstance(organization, int):
+            organization_endpoint = GATEWAY_ORGANIZATION_ENDPOINT if object_endpoint.startswith("api/gateway/") else CONTROLLER_ORGANIZATION_ENDPOINT
+            organization = name_cache.get(organization_endpoint, {}).get(organization)
+            if organization is None:
+                return dict(item, object_id=object_id, non_restorable_reason="object organization could not be resolved to a portable name")
+        if organization:
+            object_data["organization"] = organization
+        if res_type == "role_user_assignments":
+            item.update({"object_name": object_data["name"], "object_type": object_data["type"]})
+            if object_data.get("credential_type"):
+                item["object_credential_type"] = object_data["credential_type"]
+            if organization:
+                item["organization"] = organization
+        else:
+            item["assignment_objects"] = [object_data]
+        return item
 
     def _build_role_assignment_export_cache(self, manager, assignments, max_objects):
         """Bulk-load role definitions and assignment target objects before conversion."""
@@ -563,15 +572,7 @@ class ActionModule(BaseResourceActionPlugin):
             summary = assignment.get("summary_fields", {})
             role = summary.get("role_definition", {})
             content = summary.get("content_object", {})
-            service = content.get("service")
-            model = content.get("model_name")
-            role_content_type = role.get("content_type")
-            role_id = role.get("id")
-            if not role_content_type and role_id is not None:
-                role_content_type = role_definition_cache.get(str(role_id), {}).get("content_type")
-            if not (service and model) and isinstance(role_content_type, str) and "." in role_content_type:
-                service, model = role_content_type.split(".", 1)
-            object_type_path = ROLE_OBJECT_TYPE_MAP.get((service, model))
+            object_type_path = self._assignment_object_type_path(role, content, role_definition_cache)
             if object_type_path:
                 endpoints.add(object_type_path[1])
 
@@ -656,14 +657,9 @@ class ActionModule(BaseResourceActionPlugin):
     def _clean_resource(self, resource, name_cache, resource_type=None):
         """Strip internal fields and resolve FK IDs to names."""
         cleaned = {}
+        skipped_fields = RESOURCE_FIELDS_TO_SKIP.get(resource_type, frozenset())
         for key, value in resource.items():
-            if resource_type == "credentials" and key in {"cloud", "kind", "kubernetes"}:
-                # Controller response metadata; these are not controller_credential
-                # module parameters and cause import validation failures.
-                continue
-            if resource_type == "instance_groups" and key in {"policy_instance_list", "instances"}:
-                # Instance assignments and policy lists refer to the source
-                # Controller's runtime nodes and are not portable.
+            if key in skipped_fields:
                 continue
             if resource_type in {"job_templates", "workflow_job_templates", "inventory_sources"} and key in {"extra_vars", "source_vars"}:
                 cleaned[key] = self._normalize_variables(value)
@@ -673,14 +669,6 @@ class ActionModule(BaseResourceActionPlugin):
                 continue
             if resource_type == "execution_environments" and key == "pull" and value in (None, ""):
                 # The module default is the valid Controller value: missing.
-                continue
-            if resource_type == "authenticators" and key == "slug":
-                # Slugs are instance-local identifiers; authenticator maps use
-                # the portable authenticator name instead.
-                continue
-            if resource_type == "users" and key in {"authenticator_uid", "authenticators"}:
-                # The associated_authenticators mapping below is the portable
-                # representation. Do not emit the deprecated ID-based fields.
                 continue
             if resource_type == "users" and key == "associated_authenticators":
                 authenticator_cache = name_cache.get("api/gateway/v1/authenticators/", {})
