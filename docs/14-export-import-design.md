@@ -736,7 +736,8 @@ description, and timeout. The destination must have any separately managed
 dependencies referenced by the graph.
 
 For optional workflow-level associations, HTTP 403 or 404 results in omission
-and a warning. When a required reference is missing, unreadable, or unsupported,
+and a warning. An enabled survey requires a readable survey specification.
+When required data is missing, unreadable, or unsupported,
 export warns and puts the workflow under `non_restorable.workflow_job_templates`.
 That entry includes visible nodes and a `non_restorable_reason` for review.
 Authentication failures, server errors, and malformed graph data still fail

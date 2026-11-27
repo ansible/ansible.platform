@@ -20,7 +20,11 @@ import traceback as _tb
 import yaml
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
-from ansible_collections.ansible.platform.plugins.plugin_utils.workflow_export import export_workflow_nodes, workflow_organization_name
+from ansible_collections.ansible.platform.plugins.plugin_utils.workflow_export import (
+    export_workflow_nodes,
+    read_named_workflow_dependency,
+    workflow_organization_name,
+)
 
 CONTROLLER_ORGANIZATION_ENDPOINT = "api/controller/v2/organizations/"
 GATEWAY_ORGANIZATION_ENDPOINT = "api/gateway/v1/organizations/"
@@ -614,13 +618,24 @@ class ActionModule(BaseResourceActionPlugin):
                 continue
 
             cleaned = self._clean_resource(resource, name_cache, res_type)
-            self._fetch_associations(manager, res_type, resource, cleaned, name_cache, endpoint, max_objects)
+            association_reasons = self._fetch_associations(manager, res_type, resource, cleaned, name_cache, endpoint, max_objects)
             if res_type == "workflow_job_templates":
                 node_data, reasons = export_workflow_nodes(manager, resource["id"], max_objects)
+                reasons.extend(association_reasons)
                 cleaned["workflow_nodes"] = node_data
                 scope = workflow_organization_name(resource)
                 if scope:
                     cleaned["organization"] = scope
+                for field, collection in (("inventory", "inventories"), ("webhook_credential", "credentials")):
+                    resource_id = cleaned.get(field)
+                    if type(resource_id) is not int:
+                        continue
+                    dependency = read_named_workflow_dependency(manager, collection, resource_id)
+                    # Import scopes these names to the workflow's organization and treats numeric strings as IDs.
+                    if dependency is not None and (resource.get("organization") is None or dependency.get("organization") == resource["organization"]):
+                        name = dependency["name"]
+                        if not name.strip().isdigit():
+                            cleaned[field] = name
                 for field in ("organization", "inventory", "webhook_credential"):
                     if type(cleaned.get(field)) is int:
                         del cleaned[field]
@@ -739,18 +754,18 @@ class ActionModule(BaseResourceActionPlugin):
         return parsed if isinstance(parsed, dict) else value
 
     def _fetch_associations(self, manager, res_type, raw_resource, cleaned, name_cache, base_endpoint, max_objects):
-        """Fetch and inline association sub-endpoints for a resource."""
+        """Inline associations and return reasons required data could not be exported."""
         resource_id = raw_resource.get("id")
         if not resource_id:
-            return
+            return []
 
         associations = list(RESOURCE_ASSOCIATIONS.get(res_type, []))
         if res_type == "inventory":
             associations.extend(RESOURCE_ASSOCIATIONS_INVENTORY)
 
         if not associations:
-            return
-
+            return []
+        reasons = []
         detail_endpoint = "%s%d/" % (base_endpoint, resource_id)
 
         for assoc_key, sub_suffix, mode in associations:
@@ -815,7 +830,11 @@ class ActionModule(BaseResourceActionPlugin):
 
             except Exception as exc:
                 if res_type == "workflow_job_templates" and isinstance(exc, APIError) and exc.status_code in (403, 404):
-                    self._display.warning("Omitting inaccessible %s for workflow %r" % (assoc_key, cleaned.get("name")))
+                    if assoc_key == "survey_spec" and raw_resource.get("survey_enabled"):
+                        reasons.append("workflow survey_spec could not be read for the enabled survey")
+                    else:
+                        self._display.warning("Omitting inaccessible %s for workflow %r" % (assoc_key, cleaned.get("name")))
                     continue
                 self._display.vvvv("Failed to fetch %s for %s/%d: %s" % (assoc_key, res_type, resource_id, exc))
                 raise
+        return reasons

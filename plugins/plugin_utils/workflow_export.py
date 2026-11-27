@@ -47,7 +47,7 @@ def workflow_organization_name(resource):
     return None
 
 
-def _read_named_resource(manager, collection, resource_id):
+def read_named_workflow_dependency(manager, collection, resource_id):
     """Read a Controller resource by ID and verify the returned identity."""
     if type(resource_id) is not int:
         raise ValueError(f"Invalid ID for workflow {collection} reference")
@@ -76,7 +76,7 @@ def _read_node_target(manager, node):
     if type(template_id) is int:
         for target_type, collection in _NODE_TARGET_COLLECTIONS.items():
             if target_path.endswith(f"/{collection}/{template_id}/"):
-                return target_type, _read_named_resource(manager, collection, template_id)
+                return target_type, read_named_workflow_dependency(manager, collection, template_id)
     return None, None
 
 
@@ -90,7 +90,7 @@ def _node_target_reference(manager, target_type, target):
         inventory_id = target.get("inventory")
         if inventory_id is None:
             return None
-        inventory = _read_named_resource(manager, "inventories", inventory_id)
+        inventory = read_named_workflow_dependency(manager, "inventories", inventory_id)
         reference = _scoped_reference(inventory) if inventory is not None else None
         if reference is None:
             return None
@@ -165,7 +165,7 @@ def export_workflow_nodes(manager, workflow_id, max_objects):
             resource_id = node.get(field)
             if resource_id is None:
                 continue
-            resource = _read_named_resource(manager, collection, resource_id)
+            resource = read_named_workflow_dependency(manager, collection, resource_id)
             prompt_reference = _scoped_reference(resource) if resource is not None else None
             if prompt_reference is None:
                 reasons.append(f"node {identifier!r} has an unresolved {field} prompt")

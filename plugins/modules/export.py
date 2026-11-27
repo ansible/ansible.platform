@@ -28,7 +28,7 @@ description:
   - Select only O(workflow_job_templates) to export workflows as a user with limited access.
     A readable job template can supply its organization name even when the caller cannot read that organization directly.
   - Inaccessible optional workflow associations are omitted with a warning. Workflows with unresolved required references
-    are returned in RV(non_restorable) with their visible data and a reason.
+    or an unreadable enabled survey are returned in RV(non_restorable) with their visible data and a reason.
   - Nested workflow targets and populated node credential, label, and instance-group associations currently prevent a workflow
     from being included in RV(assets). Exports that select other resource types still require access to the shared reference lookups.
 version_added: "2.7.0"

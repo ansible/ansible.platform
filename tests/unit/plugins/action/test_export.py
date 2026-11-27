@@ -538,6 +538,98 @@ def test_selected_workflow_uses_visible_graph_dependencies(target_type, target_s
             assert "has a credentials prompt whose associations cannot be verified" in exported["non_restorable_reason"]
 
 
+@pytest.mark.parametrize(
+    ("credential_response", "expected_credential", "expected_reason"),
+    [
+        ({"id": 9, "name": "Webhook Token", "organization": 1}, "Webhook Token", None),
+        (APIError("Credential is forbidden", status_code=403), None, "workflow webhook_credential could not be resolved"),
+        ({"id": 9, "name": "Webhook Token", "organization": 2}, None, "workflow webhook_credential could not be resolved"),
+        ({"id": 9, "name": "123", "organization": 1}, None, "workflow webhook_credential could not be resolved"),
+    ],
+)
+def test_workflow_export_resolves_workflow_level_references(credential_response, expected_credential, expected_reason):
+    workflow_endpoint = "api/controller/v2/workflow_job_templates/"
+    workflow = {
+        "id": 1,
+        "name": "Release",
+        "organization": 1,
+        "summary_fields": {"organization": {"id": 1, "name": "Release Org"}},
+        "inventory": 7,
+        "webhook_credential": 9,
+    }
+
+    def search_api(endpoint, **kwargs):
+        if endpoint == workflow_endpoint:
+            return {"results": [workflow]}
+        if endpoint == "api/controller/v2/inventories/7/":
+            return {"id": 7, "name": "Hosts", "organization": 1}
+        if endpoint == "api/controller/v2/credentials/9/":
+            if isinstance(credential_response, APIError):
+                raise credential_response
+            return credential_response
+        if endpoint.startswith(f"{workflow_endpoint}1/"):
+            return {"results": []}
+        raise AssertionError(f"Unexpected dependency read: {endpoint}")
+
+    manager = Mock()
+    manager.search_api.side_effect = search_api
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock(verbosity=0)
+    action._prepare_action = Mock(return_value={"result": {}, "validated_params": {"workflow_job_templates": ["Release"]}, "manager": manager})
+
+    result = action.run()
+
+    bucket = "assets" if expected_reason is None else "non_restorable"
+    exported = result[bucket]["workflow_job_templates"][0]
+    assert (exported["organization"], exported["inventory"], exported.get("webhook_credential"), exported.get("non_restorable_reason")) == (
+        "Release Org",
+        "Hosts",
+        expected_credential,
+        expected_reason,
+    )
+
+
+@pytest.mark.parametrize(
+    ("survey_enabled", "status", "bucket"),
+    [(True, 403, "non_restorable"), (True, 404, "non_restorable"), (False, 403, "assets"), (True, 200, "assets")],
+)
+def test_workflow_export_requires_a_readable_enabled_survey(monkeypatch, survey_enabled, status, bucket):
+    workflow_endpoint = "api/controller/v2/workflow_job_templates/"
+    workflow = {"id": 1, "name": "Release", "survey_enabled": survey_enabled}
+    survey = {"name": "Release inputs", "spec": [{"variable": "release_version", "required": True}]}
+    nodes = [{"identifier": "deploy"}]
+    monkeypatch.setattr(
+        "ansible_collections.ansible.platform.plugins.action.export.export_workflow_nodes",
+        lambda manager, workflow_id, max_objects: (nodes, []),
+    )
+
+    def search_api(endpoint, **kwargs):
+        if endpoint == workflow_endpoint:
+            return {"results": [workflow]}
+        if endpoint == f"{workflow_endpoint}1/survey_spec/":
+            if status != 200:
+                raise APIError("Survey lookup denied or missing", status_code=status)
+            return survey
+        return {"results": []}
+
+    manager = Mock()
+    manager.search_api.side_effect = search_api
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock(verbosity=0)
+    action._prepare_action = Mock(return_value={"result": {}, "validated_params": {"workflow_job_templates": ["Release"]}, "manager": manager})
+
+    result = action.run()
+
+    exported = result[bucket]["workflow_job_templates"][0]
+    assert (exported["workflow_nodes"], exported.get("survey_spec"), exported.get("non_restorable_reason")) == (
+        nodes,
+        survey if status == 200 else None,
+        "workflow survey_spec could not be read for the enabled survey" if bucket == "non_restorable" else None,
+    )
+    if bucket == "non_restorable":
+        assert result["assets"] == {}
+
+
 @pytest.mark.parametrize("accessible", [True, False])
 @pytest.mark.parametrize(
     ("target_type", "collection", "target"),
