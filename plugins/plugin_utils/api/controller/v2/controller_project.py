@@ -99,17 +99,16 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
                 try:
                     api_data["credential"] = manager.lookup_resource_id("credentials", "name", credential, **lookup_kwargs)
                 except ResourceNotFoundError:
-                    # Credentials owned by a user/team may be global rather
-                    # than organization-scoped. Retry only for a scoped miss;
-                    # authentication, transport, and API errors must surface.
-                    candidate_id = manager.lookup_resource_id("credentials", "name", credential, service="controller")
-                    candidate = manager.search_api(
-                        "/api/controller/v2/credentials/%s/" % candidate_id,
+                    if organization_scope is None:
+                        raise
+                    # Apply the global scope before the lookup checks uniqueness.
+                    api_data["credential"] = manager.lookup_resource_id(
+                        "credentials",
+                        "name",
+                        credential,
                         service="controller",
+                        extra_query_params={"organization__isnull": True},
                     )
-                    if candidate.get("organization") is not None:
-                        raise ValueError("Credential %r was found outside the project organization and is not global" % credential)
-                    api_data["credential"] = candidate_id
             else:
                 api_data["credential"] = int(credential) if credential is not None else None
 
