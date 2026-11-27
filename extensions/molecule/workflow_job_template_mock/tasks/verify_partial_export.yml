@@ -1,0 +1,98 @@
+---
+- name: Exercise partial workflow export and import
+  vars:
+    complete_workflow: "Mock restorable workflow"
+    incomplete_workflow: "Mock workflow with a missing target"
+    controller_api: "{{ gateway_hostname }}/api/controller/v2"
+  module_defaults:
+    ansible.builtin.uri:
+      url_username: "{{ gateway_username }}"
+      url_password: "{{ gateway_password }}"
+      force_basic_auth: true
+      body_format: json
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+  block:
+    - name: Create workflows for the export
+      ansible.platform.workflow_job_template:
+        name: "{{ item }}"
+      loop:
+        - "{{ complete_workflow }}"
+        - "{{ incomplete_workflow }}"
+      register: export_fixtures
+
+    - name: Add a node that references a missing job template
+      ansible.builtin.uri:
+        url: "{{ controller_api }}/workflow_job_template_nodes/"
+        method: POST
+        status_code: 201
+        body:
+          identifier: missing-target
+          workflow_job_template: "{{ export_fixtures.results[1].workflow_job_template.id }}"
+          unified_job_template: 999999
+          related:
+            unified_job_template: /api/controller/v2/job_templates/999999/
+          success_nodes: []
+          failure_nodes: []
+          always_nodes: []
+      register: missing_target_node
+
+    - name: Export both workflows together
+      ansible.platform.export:
+        workflow_job_templates:
+          - "{{ complete_workflow }}"
+          - "{{ incomplete_workflow }}"
+      register: workflow_bundle
+
+    - name: Verify the incomplete workflow and its visible node can be inspected
+      ansible.builtin.assert:
+        that:
+          - workflow_bundle.assets.workflow_job_templates | map(attribute='name') | list == [complete_workflow]
+          - partial_workflow.name == incomplete_workflow
+          - partial_workflow.workflow_nodes[0].identifier == 'missing-target'
+          - "'missing-target' in partial_workflow.non_restorable_reason"
+      vars:
+        partial_workflow: "{{ workflow_bundle.non_restorable.workflow_job_templates[0] }}"
+
+    - name: Remove the source workflows before importing
+      ansible.platform.workflow_job_template:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ complete_workflow }}"
+        - "{{ incomplete_workflow }}"
+
+    - name: Import the restorable assets
+      ansible.platform.import:
+        assets: "{{ workflow_bundle.assets }}"
+      register: imported_workflows
+
+    - name: List workflows matching the test names
+      ansible.builtin.uri:
+        url: "{{ controller_api }}/workflow_job_templates/?name__in={{ (complete_workflow ~ ',' ~ incomplete_workflow) | urlencode }}"
+      register: restored_workflows
+
+    - name: Verify only the complete workflow was recreated
+      ansible.builtin.assert:
+        that:
+          - imported_workflows is changed
+          - restored_workflows.json.results | map(attribute='name') | list == [complete_workflow]
+  always:
+    - name: Remove the mock workflow node
+      ansible.builtin.uri:
+        url: "{{ controller_api }}/workflow_job_template_nodes/{{ missing_target_node.json.id }}/"
+        method: DELETE
+        status_code: [204, 404]
+      when: missing_target_node.json.id is defined
+
+    - name: Remove the mock workflows
+      ansible.platform.workflow_job_template:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ complete_workflow }}"
+        - "{{ incomplete_workflow }}"
+...

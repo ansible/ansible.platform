@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - export - Mark role team assignments as non-restorable when the team's organization cannot be resolved.
+  - import - Continue importing resources when the role assignment lookup cache cannot be loaded.
+  - controller_project - Restrict project credential fallback to global credentials before checking for duplicate names.
+  - job_template - Compare inventory IDs so a scoped inventory change is applied even when the names match.
+trivial:
+  - Simplify export field filtering and role assignment conversion.
+...

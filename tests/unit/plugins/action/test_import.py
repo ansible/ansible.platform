@@ -5,7 +5,7 @@
 from __future__ import absolute_import, division, print_function
 
 from importlib import import_module
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, call
 
 import pytest
 from ansible.plugins import loader as plugin_loaders
@@ -579,6 +579,55 @@ def test_import_skips_null_role_assignment_collections(action):
     assert result["results"]["role_user_assignments"]["ok"] == 1
     assert "role_team_assignments" not in result["results"]
     action._import_single_resource.assert_called_once_with(manager, "role_user_assignment", {"user_id": 77}, {})
+
+
+def test_role_cache_failure_keeps_selectors_and_continues_import(action):
+    user_assignment = {"user": "alice", "role_definition": "Org Admin", "object_name": "Production", "object_type": "organizations"}
+    team_assignment = {
+        "team": "Platform",
+        "team_organization": "Production",
+        "role_definition": "Org Admin",
+        "assignment_objects": [{"type": "organizations", "name": "Production"}],
+    }
+    assets = {
+        "inventory": [{"name": "Production", "hosts": [{"name": "web"}]}],
+        "role_user_assignments": [user_assignment],
+        "role_team_assignments": [team_assignment],
+    }
+
+    def search_api(*, endpoint, **kwargs):
+        if endpoint == "api/gateway/v1/teams/":
+            raise ValueError("Team list exceeds the cache limit")
+        return {"results": []}
+
+    manager = Mock()
+    manager.search_api.side_effect = search_api
+    action._prepare_action = Mock(return_value={"result": {}, "validated_params": {"assets": assets}, "manager": manager})
+    action._import_single_resource = Mock(side_effect=[True, ValueError("Assignment rejected"), True, True])
+    action._display = Mock(verbosity=0)
+    action._play_context = Mock(check_mode=False)
+
+    result = action.run()
+
+    assert action._import_single_resource.call_args_list == [
+        call(manager, "inventory", {"name": "Production"}, {}),
+        call(manager, "role_user_assignment", user_assignment, {}),
+        call(manager, "role_team_assignment", team_assignment, {}),
+        call(manager, "host", {"name": "web", "inventory": "Production"}, {}),
+    ]
+    assert [entry.kwargs["endpoint"] for entry in manager.search_api.call_args_list].count("api/gateway/v1/teams/") == 1
+    assert result == {
+        "changed": True,
+        "failed": True,
+        "results": {
+            "inventory": {"changed": 1, "ok": 0, "failed": 0},
+            "role_user_assignments": {"changed": 0, "ok": 0, "failed": 1},
+            "role_team_assignments": {"changed": 1, "ok": 0, "failed": 0},
+            "hosts": {"changed": 1, "ok": 0, "failed": 0},
+        },
+        "failed_resources": [{"type": "role_user_assignments", "name": "unknown", "error": "Assignment rejected"}],
+        "msg": "1 resource(s) failed to import.",
+    }
 
 
 def test_pre_resolve_role_user_assignment_replaces_names_with_ids():
