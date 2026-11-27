@@ -146,10 +146,10 @@ options:
   source_project:
     description:
       - Project name or ID to use as source with SCM option.
-      - Name lookups are independent of the inventory organization so a project
-        from another organization can be selected.
-      - Use an AWX-qualified name such as C(Organization++Project) when project
-        names are duplicated across organizations.
+      - Plain-name lookups use the supplied inventory organization when one is
+        provided.
+      - Use an AWX-qualified name such as C(Project++Organization) to select a
+        project from another organization or disambiguate duplicate names.
     type: str
 
   scm_branch:
@@ -214,7 +214,7 @@ EXAMPLES = """
     inventory: "Production Inventory"
     organization: "Production Organization"
     source: scm
-    source_project: "Development Organization++Shared Project"
+    source_project: "Shared Project++Development Organization"
     source_path: "inventories/hosts.yml"
 
 - name: Add notification templates to an inventory source

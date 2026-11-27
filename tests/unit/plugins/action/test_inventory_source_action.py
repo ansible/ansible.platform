@@ -231,6 +231,34 @@ class TestInventorySourceAssociations(unittest.TestCase):
         call = action._client.manage_associations.call_args
         self.assertEqual(call.args[1], 55)
 
+    def test_find_resolves_source_project_for_idempotency(self):
+        action = ActionModule.__new__(ActionModule)
+        action._task = MagicMock()
+        action._task.args = {"state": "present"}
+        manager = MagicMock()
+        manager.execute.return_value = {"id": 30, "source_project": "15"}
+        manager.lookup_resource_id.return_value = 42
+        resource_data = {
+            "name": "source",
+            "inventory": "1",
+            "organization": "Inventory Org",
+            "source_project": "Shared Project++Other Org",
+        }
+
+        result = action._find_existing_resource(manager, resource_data)
+
+        self.assertEqual(result["id"], 30)
+        self.assertEqual(resource_data["source_project"], "42")
+        manager.lookup_resource_id.assert_any_call("organizations", "name", "Inventory Org", service="controller")
+        manager.lookup_resource_id.assert_any_call(
+            "projects",
+            "name",
+            "Shared Project++Other Org",
+            service="controller",
+            require_unique=True,
+            numeric_is_id=False,
+        )
+
 
 class TestInventorySourceIdempotency(unittest.TestCase):
     def test_organization_scope_is_idempotent_for_name_and_id(self):

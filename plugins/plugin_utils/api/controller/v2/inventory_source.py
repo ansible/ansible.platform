@@ -19,33 +19,20 @@ from ....platform.types import EndpointOperation, TransformContext
 logger = logging.getLogger(__name__)
 
 
-def _lookup_source_project_id(manager, source_project):
-    """Resolve a source project by name, ID, or ``Organization++Project`` reference."""
+def _lookup_source_project_id(manager, source_project, organization_id=None):
+    """Resolve a source project by name, ID, or ``Project++Organization`` reference."""
     source_project = str(source_project)
+    lookup_kwargs = {"service": "controller", "require_unique": True}
     if "++" in source_project:
-        organization_ref, separator, project_name = source_project.partition("++")
-        if not organization_ref or not separator or not project_name:
-            raise ValueError("Source project references must use the form 'Organization++Project'")
-        if organization_ref.strip().isdigit():
-            organization_id = int(organization_ref)
-        else:
-            organization_id = manager.lookup_resource_id("organizations", "name", organization_ref, service="controller", require_unique=True)
-
-        response = manager.search_api(
-            "/api/controller/v2/projects/",
-            query_params={"name": project_name, "organization": organization_id},
-        )
-        results = response.get("results", [])
-        if not results:
-            raise ValueError("Resource 'projects' with name=%s and organization=%s not found" % (project_name, organization_id))
-        if len(results) > 1 or response.get("count", len(results)) > 1 or response.get("next"):
-            raise ValueError("Resource 'projects' with name=%s and organization=%s matched multiple resources" % (project_name, organization_id))
-        project_id = results[0].get("id")
-        if project_id is None:
-            raise ValueError("Resource 'projects' with name=%s and organization=%s has no ID" % (project_name, organization_id))
-        return project_id
-
-    return manager.lookup_resource_id("projects", "name", source_project, service="controller", require_unique=True)
+        project_name, separator, organization_ref = source_project.partition("++")
+        if not separator or not project_name or not organization_ref:
+            raise ValueError("Source project references must use the form 'Project++Organization'")
+        # Qualified references carry their own organization scope. Disable the
+        # numeric-ID shortcut so a project named only with digits is queried by name.
+        lookup_kwargs["numeric_is_id"] = False
+    elif organization_id is not None:
+        lookup_kwargs["extra_query_params"] = {"organization": organization_id}
+    return manager.lookup_resource_id("projects", "name", source_project, **lookup_kwargs)
 
 
 @dataclass
@@ -158,12 +145,10 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         source_project = getattr(ansible_instance, "source_project", None)
         if source_project is not None and op not in ("find", "delete"):
             if manager is not None and not str(source_project).strip().isdigit():
-                # Do not apply organization_scope here: source projects are
-                # allowed to come from a different organization. Require a
-                # unique plain-name match. For qualified references, resolve
-                # the organization explicitly because some Controller API
-                # versions do not expose project named URLs as detail paths.
-                api_data["source_project"] = _lookup_source_project_id(manager, source_project)
+                # Plain names remain scoped to the requested inventory
+                # organization for compatibility. Qualified references carry
+                # their own organization and may select a cross-org project.
+                api_data["source_project"] = _lookup_source_project_id(manager, source_project, organization_id=organization_id)
             else:
                 api_data["source_project"] = int(source_project)
 
