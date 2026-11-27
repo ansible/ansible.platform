@@ -69,6 +69,8 @@ class TestRulebookActivationAction(unittest.TestCase):
                 "event_streams": {},
                 "log_level": {"default": "error"},
                 "enable_persistence": {"type": "bool", "default": False},
+                "skip_audit_events": {"type": "bool"},
+                "rule_engine_credential": {},
                 "rule_engine_credential_id": {},
                 "restart_on_project_update": {"type": "bool", "default": False},
                 "state": {"default": "present"},
@@ -84,6 +86,12 @@ class TestRulebookActivationAction(unittest.TestCase):
                     with patch.object(action, "_validate_data", return_value=validation):
                         with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
                             return action.run(task_vars={})
+
+    def test_legacy_reference_options_count_as_activation_update_fields(self):
+        action = self._make_action()
+        action._task.args = {"project": "project-name"}
+
+        self.assertTrue(action._has_activation_update_fields())
 
     def test_legacy_enabled_maps_to_state(self):
         action = self._make_action()
@@ -217,6 +225,51 @@ class TestRulebookActivationAction(unittest.TestCase):
         self.assertEqual(call_args[0][0], "POST")
         self.assertIn("enable", call_args[0][1])
 
+    def test_state_transition_applies_other_options_for_existing_activation(self):
+        """State changes and explicit activation options are both applied."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": False})
+
+        result = self._run_action(
+            action,
+            manager,
+            {
+                "name": "test-activation",
+                "state": "enabled",
+                "restart": False,
+                "skip_audit_events": True,
+            },
+            provided_args={"name": "test-activation", "state": "enabled", "skip_audit_events": True},
+        )
+
+        self.assertFalse(result["failed"])
+        self.assertTrue(result["changed"])
+        manager.direct_request.assert_called_once()
+        update_call = next(call for call in manager.execute.call_args_list if call.kwargs.get("operation") == "update")
+        self.assertTrue(update_call.kwargs["ansible_data"]["skip_audit_events"])
+
+    def test_state_option_applies_other_options_without_transition(self):
+        """Explicit options are updated even when the requested state is unchanged."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": True, "skip_audit_events": False})
+
+        result = self._run_action(
+            action,
+            manager,
+            {
+                "name": "test-activation",
+                "state": "enabled",
+                "restart": False,
+                "skip_audit_events": True,
+            },
+            provided_args={"name": "test-activation", "state": "enabled", "skip_audit_events": True},
+        )
+
+        self.assertFalse(result["failed"])
+        self.assertTrue(result["changed"])
+        manager.direct_request.assert_not_called()
+        self.assertTrue(any(call.kwargs.get("operation") == "update" for call in manager.execute.call_args_list))
+
     def test_enable_already_enabled_activation(self):
         """No-op when enabling an already enabled activation."""
         action = self._make_action()
@@ -348,6 +401,37 @@ class TestRulebookActivationAction(unittest.TestCase):
                     (create["operation"], create["ansible_data"].get("project_name"), result.get("warnings", [])),
                     ("create", expected_project, warnings),
                 )
+
+    def test_update_compares_rule_engine_credential_name_and_id(self):
+        action = self._make_action()
+        manager = self._make_manager(
+            find_result={
+                "id": 42,
+                "name": "test-activation",
+                "is_enabled": True,
+                "rule_engine_credential_id": 2,
+                "skip_audit_events": False,
+            }
+        )
+        manager.lookup_resource_id.return_value = 2
+
+        self.assertFalse(
+            action._activation_update_differs(
+                manager,
+                {
+                    "name": "test-activation",
+                    "rule_engine_credential": "_DEFAULT_EDA_RULE_ENGINE_CREDS",
+                    "skip_audit_events": False,
+                },
+                {
+                    "id": 42,
+                    "name": "test-activation",
+                    "is_enabled": True,
+                    "rule_engine_credential_id": 2,
+                    "skip_audit_events": False,
+                },
+            )
+        )
 
     def test_update_existing_activation_no_changes_is_idempotent(self):
         """An unchanged activation is not PATCHed or reported as changed."""

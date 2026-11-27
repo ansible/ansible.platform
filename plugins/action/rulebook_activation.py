@@ -47,6 +47,7 @@ class ActionModule(BaseResourceActionPlugin):
 
     MODULE_NAME = "rulebook_activation"
     MODEL_CLASS = AnsibleRulebookActivation
+    _MUTUALLY_EXCLUSIVE = [["rule_engine_credential", "rule_engine_credential_id"]]
 
     _LEGACY_REFERENCE_FIELDS = {
         "project": "project_name",
@@ -111,9 +112,12 @@ class ActionModule(BaseResourceActionPlugin):
 
             if state in ("enabled", "disabled") and existing:
                 state_result = self._handle_state_transition(manager, state, existing, result)
-                if self._legacy_enabled_provided and self._has_legacy_enabled_update_fields():
+                if self._has_activation_update_fields():
                     state_changed = state_result.get("changed", False)
-                    result = self._handle_create_or_update(manager, params, state, name, new_name, existing, state_result)
+                    existing_after_state = dict(existing)
+                    if state_changed:
+                        existing_after_state["is_enabled"] = state == "enabled"
+                    result = self._handle_create_or_update(manager, params, state, name, new_name, existing_after_state, state_result)
                     result["changed"] = state_changed or result.get("changed", False)
                 return result
 
@@ -128,10 +132,14 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _has_legacy_enabled_update_fields(self) -> bool:
-        """Return whether enabled was combined with explicit CRUD fields."""
+    def _has_activation_update_fields(self) -> bool:
+        """Return whether state was combined with explicit CRUD fields."""
         ignored = {"enabled", "name", "state", "restart"}
-        return any(field not in ignored for field in self._task.args if field in _ANSIBLE_MODEL_FIELDS)
+        for field in self._task.args:
+            runtime_field = self._LEGACY_REFERENCE_FIELDS.get(field, field)
+            if runtime_field in _ANSIBLE_MODEL_FIELDS and runtime_field not in ignored:
+                return True
+        return False
 
     def _find_activation(self, manager: Any, name: Optional[str]) -> Optional[dict]:
         """Find an existing activation by name.

@@ -147,9 +147,21 @@ options:
     type: bool
     default: false
 
+  skip_audit_events:
+    description:
+      - Skip audit events for this activation.
+    type: bool
+
+  rule_engine_credential:
+    description:
+      - The name or ID of the Event-Driven Ansible Rule Engine Credential.
+      - Mutually exclusive with O(rule_engine_credential_id).
+    type: str
+
   rule_engine_credential_id:
     description:
       - The ID of the Event-Driven Ansible Rule Engine Credential.
+      - Mutually exclusive with O(rule_engine_credential).
     type: int
 
   restart_on_project_update:
@@ -170,6 +182,7 @@ options:
       - C(absent) removes the activation if it exists.
       - C(enabled) enables an existing activation or creates one in enabled state.
       - C(disabled) disables an existing activation or creates one in disabled state.
+      - For an existing activation, explicitly supplied options are applied in addition to the state transition.
     type: str
     choices: ["present", "absent", "enabled", "disabled"]
     default: "present"
@@ -227,6 +240,12 @@ EXAMPLES = """
   ansible.platform.rulebook_activation:
     name: "Example Rulebook Activation"
     state: disabled
+
+- name: Disable and update a rulebook activation
+  ansible.platform.rulebook_activation:
+    name: "Example Rulebook Activation"
+    state: disabled
+    skip_audit_events: true
 
 - name: Restart a rulebook activation
   ansible.platform.rulebook_activation:

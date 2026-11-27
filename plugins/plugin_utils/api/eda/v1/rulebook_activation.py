@@ -165,6 +165,7 @@ class APIRulebookActivation_v1(BaseTransformMixin):
     restart_policy: Optional[str] = None
     log_level: Optional[str] = None
     enable_persistence: Optional[bool] = None
+    skip_audit_events: Optional[bool] = None
     rule_engine_credential_id: Optional[int] = None
     eda_credentials: Optional[List[int]] = None
     k8s_service_name: Optional[str] = None
@@ -207,6 +208,7 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
             "awx_token_name",
             "eda_credentials",
             "event_streams",
+            "rule_engine_credential",
         )
         if manager is None and any(getattr(ansible_instance, field, None) is not None for field in reference_fields):
             raise ValueError("A manager is required to resolve rulebook activation references")
@@ -226,7 +228,7 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
             "restart_policy",
             "log_level",
             "enable_persistence",
-            "rule_engine_credential_id",
+            "skip_audit_events",
             "k8s_service_name",
             "restart_on_project_update",
         ):
@@ -238,6 +240,17 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
         extra_vars = getattr(ansible_instance, "extra_vars", None)
         if extra_vars is not None:
             api_data["extra_var"] = extra_vars
+
+        # Resolve the rule-engine credential name/ID to the API foreign key.
+        rule_engine_credential = getattr(ansible_instance, "rule_engine_credential", None)
+        if rule_engine_credential is not None:
+            if manager is None:
+                raise ValueError("A manager is required to resolve rule_engine_credential")
+            api_data["rule_engine_credential_id"] = _resolve_fk_required(manager, "eda-credentials", "name", rule_engine_credential, "Rule engine credential")
+        else:
+            rule_engine_credential_id = getattr(ansible_instance, "rule_engine_credential_id", None)
+            if rule_engine_credential_id is not None:
+                api_data["rule_engine_credential_id"] = int(rule_engine_credential_id)
 
         # --- FK resolution (names -> IDs via EDA API) ---
         if manager:
@@ -327,6 +340,7 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
                     "eda_credentials",
                     "k8s_service_name",
                     "source_mappings",
+                    "skip_audit_events",
                     "restart_on_project_update",
                 ],
                 required_for="create",
@@ -348,6 +362,7 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
                     "eda_credentials",
                     "k8s_service_name",
                     "source_mappings",
+                    "skip_audit_events",
                     "restart_on_project_update",
                 ],
                 path_params=["id"],
@@ -426,6 +441,14 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
             else:
                 eda_creds = [str(c) for c in eda_creds]
 
+        rule_engine_credential = api_data.get("rule_engine_credential")
+        rule_engine_credential_id = api_data.get("rule_engine_credential_id")
+        if isinstance(rule_engine_credential, dict):
+            rule_engine_credential_id = rule_engine_credential.get("id", rule_engine_credential_id)
+            rule_engine_credential = rule_engine_credential.get("name")
+        elif rule_engine_credential is not None:
+            rule_engine_credential = str(rule_engine_credential)
+
         ansible_data = {
             "name": api_data.get("name", ""),
             "description": api_data.get("description"),
@@ -438,7 +461,9 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
             "restart_policy": api_data.get("restart_policy"),
             "log_level": api_data.get("log_level"),
             "enable_persistence": api_data.get("enable_persistence"),
-            "rule_engine_credential_id": api_data.get("rule_engine_credential_id"),
+            "skip_audit_events": api_data.get("skip_audit_events"),
+            "rule_engine_credential": rule_engine_credential,
+            "rule_engine_credential_id": rule_engine_credential_id,
             "k8s_service_name": api_data.get("k8s_service_name"),
             "restart_on_project_update": api_data.get("restart_on_project_update"),
             "extra_vars": api_data.get("extra_var"),

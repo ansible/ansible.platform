@@ -20,6 +20,44 @@ class TestRulebookActivationTransform(unittest.TestCase):
         self.assertIn("extra_var", fields)
         self.assertIn("awx_token_id", fields)
         self.assertIn("source_mappings", fields)
+        self.assertIn("skip_audit_events", fields)
+        self.assertIn("rule_engine_credential_id", fields)
+
+    def test_from_ansible_data_resolves_rule_engine_credential_name(self):
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 2
+        activation = AnsibleRulebookActivation(
+            name="activation",
+            rule_engine_credential="_DEFAULT_EDA_RULE_ENGINE_CREDS",
+            skip_audit_events=True,
+        )
+
+        api = RulebookActivationTransformMixin_v1.from_ansible_data(activation, {"manager": manager})
+
+        self.assertEqual(api.rule_engine_credential_id, 2)
+        self.assertTrue(api.skip_audit_events)
+        manager.lookup_resource_id.assert_called_once_with(
+            "eda-credentials",
+            "name",
+            "_DEFAULT_EDA_RULE_ENGINE_CREDS",
+            service="eda",
+            require_unique=True,
+        )
+
+    def test_from_api_exposes_rule_engine_credential_and_skip_audit_events(self):
+        activation = RulebookActivationTransformMixin_v1.from_api(
+            {
+                "id": 42,
+                "name": "activation",
+                "rule_engine_credential": {"id": 2, "name": "_DEFAULT_EDA_RULE_ENGINE_CREDS"},
+                "skip_audit_events": True,
+            },
+            {},
+        )
+
+        self.assertEqual(activation.rule_engine_credential, "_DEFAULT_EDA_RULE_ENGINE_CREDS")
+        self.assertEqual(activation.rule_engine_credential_id, 2)
+        self.assertTrue(activation.skip_audit_events)
 
     def test_update_transforms_awx_token_and_event_streams(self):
         manager = MagicMock()
