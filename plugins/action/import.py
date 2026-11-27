@@ -146,7 +146,12 @@ class ActionModule(BaseResourceActionPlugin):
                     continue
 
                 if export_key in _ROLE_ASSIGNMENT_TYPES and _role_cache is None:
-                    _role_cache = self._build_role_assignment_cache(manager, assets)
+                    try:
+                        _role_cache = self._build_role_assignment_cache(manager, assets)
+                    except Exception as exc:
+                        # Remember the failed prefetch for the remaining assignment collections.
+                        _role_cache = {}
+                        self._display.vvv("Role-assignment cache unavailable; using original selectors: %s" % exc)
 
                 for index, resource_data in enumerate(resource_list):
                     if not isinstance(resource_data, dict):
@@ -161,7 +166,7 @@ class ActionModule(BaseResourceActionPlugin):
                         and k not in INLINE_CHILDREN_FIELDS
                         and k not in IMPORT_CONTROL_FIELDS
                     }
-                    if export_key in _ROLE_ASSIGNMENT_TYPES and _role_cache is not None:
+                    if export_key in _ROLE_ASSIGNMENT_TYPES and _role_cache:
                         clean_data = self._pre_resolve_role_assignment(clean_data, _role_cache, export_key)
                     resource_name = clean_data.get("name") or clean_data.get("username") or clean_data.get("hostname") or "unknown"
                     try:

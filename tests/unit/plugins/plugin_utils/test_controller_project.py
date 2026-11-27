@@ -8,7 +8,7 @@ from __future__ import absolute_import, division, print_function
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 _COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent)
 if _COLLECTIONS_PARENT not in sys.path:
@@ -16,6 +16,7 @@ if _COLLECTIONS_PARENT not in sys.path:
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_project import AnsibleControllerProject  # noqa: E402
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_project import ControllerProjectTransformMixin_v2  # noqa: E402
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ResourceNotFoundError  # noqa: E402
 
 
 class TestControllerProjectTransform(unittest.TestCase):
@@ -68,6 +69,50 @@ class TestControllerProjectTransform(unittest.TestCase):
         ansible = AnsibleControllerProject(name="proj", credential="My Cred")
         ControllerProjectTransformMixin_v2.from_ansible_data(ansible, context)
         mock_manager.lookup_resource_id.assert_any_call("credentials", "name", "My Cred", service="controller")
+
+    def test_project_organization_credential_takes_precedence(self):
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 10
+        ansible = AnsibleControllerProject(name="proj", organization="1", credential="My Cred")
+
+        api = ControllerProjectTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": manager})
+
+        self.assertEqual(api.credential, 10)
+        manager.lookup_resource_id.assert_called_once_with("credentials", "name", "My Cred", service="controller", extra_query_params={"organization": 1})
+
+    def test_project_credential_scope_miss_filters_global_credentials(self):
+        manager = MagicMock()
+
+        def lookup_credential(*args, extra_query_params=None, **kwargs):
+            if extra_query_params == {"organization": 1}:
+                raise ResourceNotFoundError("Credential not found in project organization")
+            if extra_query_params == {"organization__isnull": True}:
+                return 20
+            raise ValueError("Global and other-organization credentials matched the same name")
+
+        manager.lookup_resource_id.side_effect = lookup_credential
+        ansible = AnsibleControllerProject(name="proj", organization="1", credential="My Cred")
+
+        api = ControllerProjectTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": manager})
+
+        self.assertEqual(api.credential, 20)
+        self.assertEqual(
+            manager.mock_calls,
+            [
+                call.lookup_resource_id("credentials", "name", "My Cred", service="controller", extra_query_params={"organization": 1}),
+                call.lookup_resource_id("credentials", "name", "My Cred", service="controller", extra_query_params={"organization__isnull": True}),
+            ],
+        )
+
+    def test_unscoped_project_credential_miss_does_not_retry(self):
+        manager = MagicMock()
+        manager.lookup_resource_id.side_effect = ResourceNotFoundError("Credential not found")
+        ansible = AnsibleControllerProject(name="proj", credential="My Cred")
+
+        with self.assertRaises(ResourceNotFoundError):
+            ControllerProjectTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": manager})
+
+        manager.lookup_resource_id.assert_called_once_with("credentials", "name", "My Cred", service="controller")
 
     def test_default_environment_lookup_uses_controller_service(self):
         mock_manager = MagicMock()

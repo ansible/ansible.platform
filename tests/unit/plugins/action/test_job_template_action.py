@@ -267,6 +267,15 @@ class TestCheckMode(unittest.TestCase):
 
 
 class TestForeignKeyComparison(unittest.TestCase):
+    def test_unchanged_unscoped_inventory_name_does_not_trigger_lookup(self):
+        desired = {"name": "Ping", "inventory": "Hosts"}
+        action = _action(desired)
+        action._client = MagicMock()
+        action._client.lookup_resource_id.side_effect = ValueError("Multiple inventories named Hosts")
+
+        self.assertFalse(action._should_update(desired, {**desired, "inventory_id": 70}))
+        action._client.lookup_resource_id.assert_not_called()
+
     def test_numeric_fk_and_organization_do_not_trigger_update_when_unchanged(self):
         action = _action({"name": "Ping"})
         action._client = MagicMock()
@@ -274,11 +283,26 @@ class TestForeignKeyComparison(unittest.TestCase):
 
         changed = action._should_update(
             {"name": "Ping", "inventory": "5101", "organization": "Default"},
-            {"name": "Ping", "inventory": "Mock Inventory", "organization": None},
+            {"name": "Ping", "inventory": "Mock Inventory", "inventory_id": 5101, "organization": None},
         )
 
         self.assertFalse(changed)
-        action._client.search_api.assert_called_once_with("/api/controller/v2/inventories/5101/")
+        action._client.search_api.assert_not_called()
+
+    def test_scoped_inventory_comparison_uses_current_id(self):
+        desired = {"name": "Ping", "inventory": "Hosts", "organization": "1", "inventory_organization": "9"}
+        for current_id, expected_change in ((70, True), (90, False)):
+            with self.subTest(current_id=current_id):
+                action = _action(desired)
+                action._client = MagicMock()
+                action._client.lookup_resource_id.return_value = 90
+
+                changed = action._should_update(desired, {"name": "Ping", "inventory": "Hosts", "inventory_id": current_id})
+
+                self.assertIs(changed, expected_change)
+                action._client.lookup_resource_id.assert_called_once_with(
+                    "inventories", "name", "Hosts", service="controller", extra_query_params={"organization": 9}
+                )
 
 
 class TestCopyFrom(unittest.TestCase):
