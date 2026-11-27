@@ -292,7 +292,7 @@ class ActionModule(BaseResourceActionPlugin):
             max_objects = validated_params.get("max_objects", 10000)
             if max_objects < 1:
                 raise ValueError("max_objects must be greater than zero")
-            selected = {name for name, _, _ in EXPORTABLE_RESOURCES if validated_params.get(name) is not None}
+            selected = {name for name, _endpoint, _id_field in EXPORTABLE_RESOURCES if validated_params.get(name) is not None}
             name_cache = {} if not all_requested and selected == {"workflow_job_templates"} else self._build_name_cache(manager, max_objects)
 
             assets = {}

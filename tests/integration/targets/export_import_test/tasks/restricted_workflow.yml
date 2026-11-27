@@ -47,8 +47,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) | bool }}"
         status_code: 403
-      vars:
-        ansible_connection: local
+      delegate_to: localhost
 
     - name: Export the cross-organization workflow as admin
       ansible.platform.export:
