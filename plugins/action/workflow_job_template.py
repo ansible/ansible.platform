@@ -107,7 +107,7 @@ class ActionModule(BaseResourceActionPlugin):
             org_data = ujt_data.get("organization")
 
         if isinstance(org_data, dict) and org_data.get("name"):
-            extra["organization"] = manager.lookup_resource_id("organizations", "name", org_data["name"], service=_SERVICE)
+            extra["organization"] = manager.lookup_resource_id("organizations", "name", org_data["name"], service=_SERVICE, numeric_is_id=False)
 
         return manager.lookup_resource_id(
             "unified_job_templates",
@@ -115,6 +115,7 @@ class ActionModule(BaseResourceActionPlugin):
             name,
             service=_SERVICE,
             extra_query_params=extra or None,
+            numeric_is_id=False,
         )
 
     @staticmethod
