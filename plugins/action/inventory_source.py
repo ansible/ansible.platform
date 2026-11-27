@@ -7,6 +7,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.inventory_source import AnsibleInventorySource
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory_source import _lookup_source_project_id
 
 _NOTIFICATION_FIELDS = {
     "notification_templates_started": ("notification_templates", "name"),
@@ -22,6 +23,34 @@ class ActionModule(BaseResourceActionPlugin):
 
     _WRITE_ONLY_FIELDS = frozenset(_NOTIFICATION_FIELDS)
     _JSON_OBJECT_FIELDS = frozenset({"source_vars"})
+
+    def _should_update(self, desired_data, current_data):
+        """Compare source projects by resolved ID when a lookup was performed."""
+        desired_data = dict(desired_data)
+        resolved_source_project = getattr(self, "_resolved_source_project_id", None)
+        if resolved_source_project is not None and "source_project" in desired_data:
+            desired_data["source_project"] = str(resolved_source_project)
+        return super()._should_update(desired_data, current_data)
+
+    def _find_existing_resource(self, manager, resource_data):
+        """Resolve the desired source project before idempotency comparison."""
+        self._resolved_source_project_id = None
+        find_result = super()._find_existing_resource(manager, resource_data)
+        state = self._task.args.get("state", "present")
+        source_project = resource_data.get("source_project")
+        if not find_result or source_project is None or state in ("absent", "deleted", "exists") or str(source_project).strip().isdigit():
+            return find_result
+
+        organization = resource_data.get("organization")
+        organization_id = None
+        if organization is not None:
+            if str(organization).strip().isdigit():
+                organization_id = int(organization)
+            else:
+                organization_id = manager.lookup_resource_id("organizations", "name", organization, service="controller")
+        self._resolved_source_project_id = _lookup_source_project_id(manager, source_project, organization_id=organization_id)
+        resource_data["source_project"] = str(self._resolved_source_project_id)
+        return find_result
 
     def run(self, tmp=None, task_vars=None):
         state = self._task.args.get("state", "present")

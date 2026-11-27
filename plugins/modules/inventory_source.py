@@ -48,7 +48,7 @@ options:
 
   organization:
     description:
-      - Organization name or ID used to scope inventory and source project lookups.
+      - Organization name or ID used to scope the inventory lookup.
       - The organization is not sent as an inventory source field because it is
         inherited from the associated inventory.
     type: str
@@ -146,6 +146,10 @@ options:
   source_project:
     description:
       - Project name or ID to use as source with SCM option.
+      - Plain-name lookups use the supplied inventory organization when one is
+        provided.
+      - Use an AWX-qualified name such as C(Project++Organization) to select a
+        project from another organization or disambiguate duplicate names.
     type: str
 
   scm_branch:
@@ -202,6 +206,15 @@ EXAMPLES = """
     inventory: "Production Inventory"
     source: scm
     source_project: "My Project"
+    source_path: "inventories/hosts.yml"
+
+- name: Add an SCM inventory source using a project from another organization
+  ansible.platform.inventory_source:
+    name: "cross-org-scm-source"
+    inventory: "Production Inventory"
+    organization: "Production Organization"
+    source: scm
+    source_project: "Shared Project++Development Organization"
     source_path: "inventories/hosts.yml"
 
 - name: Add notification templates to an inventory source

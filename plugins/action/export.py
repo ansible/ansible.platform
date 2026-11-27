@@ -30,6 +30,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.workflow_export i
 CONTROLLER_ORGANIZATION_ENDPOINT = "api/controller/v2/organizations/"
 GATEWAY_ORGANIZATION_ENDPOINT = "api/gateway/v1/organizations/"
 ROLE_DEFINITION_ENDPOINT = "api/gateway/v1/role_definitions/"
+PROJECT_ORGANIZATION_CACHE = "api/controller/v2/projects/__organizations__"
 
 # Resource types and their API endpoints (in export order).
 # Gateway resources (orgs, users, teams) use api/gateway/v1/.
@@ -400,6 +401,12 @@ class ActionModule(BaseResourceActionPlugin):
                 cache[endpoint] = {r["id"]: r.get(id_field, r.get("name", r.get("username", str(r["id"])))) for r in results if "id" in r}
                 if endpoint == "api/controller/v2/inventories/":
                     cache[endpoint + ":organizations"] = {r["id"]: r.get("organization") for r in results if "id" in r}
+                if endpoint == "api/controller/v2/projects/":
+                    cache[PROJECT_ORGANIZATION_CACHE] = {
+                        r["id"]: (r.get("organization") or {}).get("id") if isinstance(r.get("organization"), dict) else r.get("organization")
+                        for r in results
+                        if "id" in r
+                    }
                 self._display.vvvv("Cached %d entries for %s" % (len(cache[endpoint]), endpoint))
             except Exception as exc:
                 self._display.warning("Failed to cache %s: %s" % (endpoint, exc))
@@ -424,6 +431,26 @@ class ActionModule(BaseResourceActionPlugin):
 
         self._display.vvvv("FK cache miss: %s=%d" % (field_name, value))
         return value
+
+    def _resolve_source_project(self, value, resource, name_cache):
+        """Resolve an inventory source project and preserve its organization scope."""
+        project_name = self._resolve_fk("source_project", value, name_cache)
+        if project_name == value:
+            return project_name
+
+        project_id = int(value) if isinstance(value, int) or str(value).isdigit() else None
+        if project_id is None:
+            return project_name
+
+        organization_id = name_cache.get(PROJECT_ORGANIZATION_CACHE, {}).get(project_id)
+        summary_project = (resource.get("summary_fields") or {}).get("source_project") or {}
+        if organization_id is None and isinstance(summary_project, dict):
+            organization = summary_project.get("organization")
+            organization_id = organization.get("id") if isinstance(organization, dict) else organization
+        organization_name = name_cache.get(CONTROLLER_ORGANIZATION_ENDPOINT, {}).get(organization_id)
+        if organization_name:
+            return "%s++%s" % (project_name, organization_name)
+        return project_name
 
     def _search_resources(self, manager, endpoint, id_field, names_filter, max_objects):
         """Search by lookup-field value, numeric ID, or qualified named URL.
@@ -683,11 +710,14 @@ class ActionModule(BaseResourceActionPlugin):
             if key in FK_RESOLUTION_MAP:
                 resource_service = "gateway" if resource_type in GATEWAY_RESOURCE_TYPES else "controller"
                 endpoint_override = GATEWAY_ORGANIZATION_ENDPOINT if key == "organization" and resource_service == "gateway" else None
-                cleaned[key] = self._resolve_fk(key, value, name_cache, endpoint_override)
-                if resource_type == "job_templates" and key == "inventory" and isinstance(value, int):
-                    inventory_org_id = name_cache.get("api/controller/v2/inventories/:organizations", {}).get(value)
-                    if inventory_org_id is not None:
-                        cleaned["inventory_organization"] = self._resolve_fk("organization", inventory_org_id, name_cache, CONTROLLER_ORGANIZATION_ENDPOINT)
+                if key == "source_project" and resource_type == "inventory_sources":
+                    cleaned[key] = self._resolve_source_project(value, resource, name_cache)
+                else:
+                    cleaned[key] = self._resolve_fk(key, value, name_cache, endpoint_override)
+                    if resource_type == "job_templates" and key == "inventory" and isinstance(value, int):
+                        inventory_org_id = name_cache.get("api/controller/v2/inventories/:organizations", {}).get(value)
+                        if inventory_org_id is not None:
+                            cleaned["inventory_organization"] = self._resolve_fk("organization", inventory_org_id, name_cache, CONTROLLER_ORGANIZATION_ENDPOINT)
             elif key == "variables":
                 cleaned[key] = self._normalize_variables(value)
             else:

@@ -283,7 +283,7 @@
         that:
           - project_export.assets.projects[0].default_environment == execution_environment_name
           - notification_template_name in project_export.assets.projects[0].notification_templates_success
-          - source_export.assets.inventory_sources[0].source_project == project_name
+          - source_export.assets.inventory_sources[0].source_project == project_name ~ '++' ~ controller_organization
           - source_export.assets.inventory_sources[0].overwrite
           - job_template_export.assets.job_templates[0].project == project_name
           - job_template_export.assets.job_templates[0].execution_environment == execution_environment_name

@@ -19,7 +19,7 @@ class AnsibleInventorySource:
     inventory: str
 
     # Optional fields
-    # Lookup-only scope; Controller derives the organization from inventory.
+    # Lookup-only scope; Controller derives the organization from the inventory.
     organization: Optional[str] = None
     new_name: Optional[str] = None
     description: Optional[str] = None

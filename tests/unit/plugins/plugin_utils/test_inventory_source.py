@@ -197,10 +197,118 @@ class TestInventorySourceTransform(unittest.TestCase):
             "name",
             "My Project",
             service="controller",
-            extra_query_params=None,
             require_unique=True,
         )
         self.assertEqual(api.source_project, 15)
+
+    def test_fk_inventory_and_plain_source_project_are_scoped_by_organization(self):
+        mock_manager = MagicMock()
+
+        def lookup_resource_id(endpoint, lookup_field, lookup_value, **kwargs):
+            return {
+                ("organizations", "Inventory Org"): 7,
+                ("inventories", "Shared Inventory"): 42,
+                ("projects", "Shared Project"): 15,
+            }[(endpoint, lookup_value)]
+
+        mock_manager.lookup_resource_id.side_effect = lookup_resource_id
+        ansible = AnsibleInventorySource(
+            name="src",
+            inventory="Shared Inventory",
+            organization="Inventory Org",
+            source="scm",
+            source_project="Shared Project",
+        )
+
+        api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        self.assertEqual(api.inventory, 42)
+        self.assertEqual(api.source_project, 15)
+        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "Inventory Org", service="controller")
+        mock_manager.lookup_resource_id.assert_any_call(
+            "inventories",
+            "name",
+            "Shared Inventory",
+            service="controller",
+            extra_query_params={"organization": 7},
+            require_unique=True,
+        )
+        mock_manager.lookup_resource_id.assert_any_call(
+            "projects",
+            "name",
+            "Shared Project",
+            service="controller",
+            extra_query_params={"organization": 7},
+            require_unique=True,
+        )
+
+    def test_fk_source_project_accepts_qualified_name_without_inventory_scope(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = 15
+        ansible = AnsibleInventorySource(
+            name="src",
+            inventory="1",
+            organization="7",
+            source="scm",
+            source_project="Shared Project++Other Org",
+        )
+
+        api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        self.assertEqual(api.source_project, 15)
+        mock_manager.lookup_resource_id.assert_called_once_with(
+            "projects",
+            "name",
+            "Shared Project++Other Org",
+            service="controller",
+            require_unique=True,
+            numeric_is_id=False,
+        )
+
+    def test_fk_qualified_numeric_source_project_is_looked_up_by_name(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = 15
+        ansible = AnsibleInventorySource(name="src", inventory="1", source="scm", source_project="123++Other Org")
+
+        api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        self.assertEqual(api.source_project, 15)
+        mock_manager.lookup_resource_id.assert_called_once_with(
+            "projects",
+            "name",
+            "123++Other Org",
+            service="controller",
+            require_unique=True,
+            numeric_is_id=False,
+        )
+
+    def test_fk_source_project_rejects_invalid_qualified_names(self):
+        mock_manager = MagicMock()
+        ansible = AnsibleInventorySource(name="src", inventory="1", source="scm", source_project="invalid")
+
+        for source_project in ("++Organization", "Project++", "++"):
+            with self.subTest(source_project=source_project):
+                ansible.source_project = source_project
+                with self.assertRaisesRegex(ValueError, "Project"):
+                    InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+    def test_fk_source_project_propagates_ambiguous_name_error(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.side_effect = ValueError(
+            "Resource 'projects' with name=Shared Project matched multiple resources; provide additional filters"
+        )
+        ansible = AnsibleInventorySource(name="src", inventory="1", source="scm", source_project="Shared Project")
+
+        with self.assertRaisesRegex(ValueError, "matched multiple resources"):
+            InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+    def test_fk_qualified_source_project_propagates_ambiguous_name_error(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.side_effect = ValueError("Resource 'projects' with name=Shared Project++Other Org matched multiple resources")
+        ansible = AnsibleInventorySource(name="src", inventory="1", source="scm", source_project="Shared Project++Other Org")
+
+        with self.assertRaisesRegex(ValueError, "matched multiple resources"):
+            InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
 
     def test_fk_id_skips_lookup(self):
         ansible = AnsibleInventorySource(name="src", inventory="42", source="ec2", credential="10")
