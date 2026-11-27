@@ -267,6 +267,15 @@ class TestCheckMode(unittest.TestCase):
 
 
 class TestForeignKeyComparison(unittest.TestCase):
+    def test_unchanged_unscoped_inventory_name_does_not_trigger_lookup(self):
+        desired = {"name": "Ping", "inventory": "Hosts"}
+        action = _action(desired)
+        action._client = MagicMock()
+        action._client.lookup_resource_id.side_effect = ValueError("Multiple inventories named Hosts")
+
+        self.assertFalse(action._should_update(desired, {**desired, "inventory_id": 70}))
+        action._client.lookup_resource_id.assert_not_called()
+
     def test_numeric_fk_and_organization_do_not_trigger_update_when_unchanged(self):
         action = _action({"name": "Ping"})
         action._client = MagicMock()

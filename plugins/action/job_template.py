@@ -58,7 +58,11 @@ class ActionModule(BaseResourceActionPlugin):
         inventory_organization = desired.pop("inventory_organization", None) or organization
         inventory = desired.get("inventory")
         current_inventory_id = current_data.get("inventory_id")
-        if inventory is not None and (current_inventory_id is not None or inventory_organization is not None or str(inventory).isdigit()):
+        inventory_name_matches = inventory == current_data.get("inventory")
+        compare_inventory_ids = (
+            inventory_organization is not None or str(inventory).isdigit() or (current_inventory_id is not None and not inventory_name_matches)
+        )
+        if inventory is not None and compare_inventory_ids:
             desired_inventory_id = resolve_inventory_id(self._client, inventory, inventory_organization)
             if str(desired_inventory_id) != str(current_inventory_id):
                 return True
