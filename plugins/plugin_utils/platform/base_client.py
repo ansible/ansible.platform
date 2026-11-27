@@ -129,7 +129,10 @@ class BaseAPIClient(ABC):
             return
 
         endpoint = path_parts[3]
-        prefixes = (f"{service}:{endpoint}:", f"lookup:{service}:{endpoint}:")
+        lookup_endpoints = (endpoint,)
+        if service == "controller" and endpoint in {"inventories", "constructed_inventories"}:
+            lookup_endpoints = ("inventories", "constructed_inventories")
+        prefixes = tuple(prefix for name in lookup_endpoints for prefix in (f"{service}:{name}:", f"lookup:{service}:{name}:"))
         for key in tuple(cache):
             if key.startswith(prefixes):
                 cache.pop(key, None)
@@ -646,6 +649,12 @@ class BaseAPIClient(ABC):
     ) -> dict:
         """Fetch an API endpoint using the concrete client's transport."""
         pass
+
+    @staticmethod
+    def _create_update_endpoint_operations(mixin_class, ansible_data):
+        """Resolve resource-specific create and update endpoints when provided."""
+        select_operations = getattr(mixin_class, "get_create_update_endpoint_operations", None)
+        return select_operations(ansible_data) if select_operations else mixin_class.get_endpoint_operations()
 
     def _execute_singleton_mutation(self, module_name: str, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """Execute a mixin's mutation plan through the shared SDK transports.

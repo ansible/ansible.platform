@@ -287,6 +287,33 @@ class TestMigratedCreateRequestContracts(unittest.TestCase):
                     if "id" in result:
                         self.assertEqual(result["id"], 42)
 
+    def test_constructed_inventory_create_sends_source_settings_in_one_request(self):
+        args = {"name": "Constructed", "organization": "1", "kind": "constructed", "source_vars": {"plugin": "constructed"}, "limit": "web"}
+        body = {"name": "Constructed", "organization": 1, "source_vars": '{"plugin": "constructed"}', "limit": "web"}
+        for client_mode in ("direct", "persistent"):
+            with self.subTest(client=client_mode):
+                client = _client(client_mode)
+
+                result = client.execute("create", "inventory", args)
+
+                client._make_request.assert_called_once()
+                request = client._make_request.call_args
+                self.assertEqual(
+                    (result["changed"], request.args[:2], request.kwargs["json"]),
+                    (True, ("POST", BASE_URL + "/api/controller/v2/constructed_inventories/"), body),
+                )
+
+    def test_inventory_sdk_rejects_source_settings_for_regular_inventory(self):
+        args = {"name": "Contract Resource", "organization": "1", "kind": "", "limit": ""}
+        for client_mode in ("direct", "persistent"):
+            with self.subTest(client=client_mode):
+                client = _client(client_mode)
+
+                with self.assertRaisesRegex(ValueError, "source_vars and limit require kind: constructed"):
+                    client.execute("create", "inventory", args)
+
+                client._make_request.assert_not_called()
+
 
 class TestMigratedDeleteRequestContracts(unittest.TestCase):
     """Delete operations use each migrated resource's public API endpoint."""
@@ -497,6 +524,41 @@ class TestMigratedRequestErrors(unittest.TestCase):
 
 class TestMigratedUpdateIdempotency(unittest.TestCase):
     """Unchanged resources skip PATCH; actual changes send it in both modes."""
+
+    def test_constructed_inventory_source_settings_use_constructed_endpoint(self):
+        current = {
+            "id": 42,
+            "name": "Constructed",
+            "organization": 1,
+            "kind": "constructed",
+            "source_vars": "plugin: constructed\n",
+            "limit": "web",
+        }
+        args = {"id": 42, "name": "Constructed", "organization": "1", "kind": "constructed"}
+        endpoint = BASE_URL + "/api/controller/v2/constructed_inventories/"
+        for client_mode in ("direct", "persistent"):
+            with self.subTest(client=client_mode):
+                client = _client(client_mode)
+                client.lookup_organization_names = MagicMock(return_value=["1"])
+                client._make_request.side_effect = _update_responder(client_mode, current, {**current, "limit": ""})
+                cache_key = "controller:inventories:name:Constructed"
+                if client_mode == "direct":
+                    cache_key = "lookup:" + cache_key
+                client.cache[cache_key] = 42
+
+                unchanged = client.execute("update", "inventory", {**args, "source_vars": {"plugin": "constructed"}, "limit": "web"})
+                self.assertFalse(unchanged["changed"])
+                request = client._make_request.call_args
+                self.assertEqual((request.args[0].upper(), request.args[1].split("?")[0]), ("GET", endpoint if client_mode == "direct" else endpoint + "42/"))
+                client._make_request.reset_mock()
+
+                updated = client.execute("update", "inventory", {**args, "limit": ""})
+                request = client._make_request.call_args
+                self.assertEqual(
+                    (updated["changed"], request.args[:2], request.kwargs["json"]),
+                    (True, ("PATCH", endpoint + "42/"), {"name": "Constructed", "organization": 1, "limit": ""}),
+                )
+                self.assertNotIn(cache_key, client.cache)
 
     def test_job_template_update_compares_inventory_ids_in_both_clients(self):
         args = {"id": 42, "name": "Contract Resource", "inventory": "Hosts", "inventory_organization": "9"}

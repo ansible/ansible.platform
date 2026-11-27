@@ -90,6 +90,18 @@ options:
     type: list
     elements: str
 
+  source_vars:
+    description:
+      - Variables for the constructed inventory's automatically created source.
+      - Requires O(kind=constructed). An empty dictionary replaces the existing source variables.
+    type: dict
+
+  limit:
+    description:
+      - Host or group pattern that restricts the hosts returned by the constructed inventory.
+      - Requires O(kind=constructed). Set to an empty string to clear the limit.
+    type: str
+
 seealso:
   - module: ansible.controller.inventory
   - module: awx.awx.inventory
@@ -120,6 +132,13 @@ EXAMPLES = """
     name: "My Constructed Inventory"
     organization: "Default"
     kind: constructed
+    input_inventories:
+      - "Production Inventory"
+    source_vars:
+      plugin: constructed
+      groups:
+        web: "application_role == 'web'"
+    limit: web
 
 - name: Rename an inventory
   ansible.platform.inventory:
@@ -193,6 +212,12 @@ inventory:
       type: str
     variables:
       description: Inventory variables as a JSON string.
+      type: str
+    source_vars:
+      description: Source variables for the constructed inventory, returned when the module reads or writes its source settings.
+      type: str
+    limit:
+      description: Host pattern for the constructed inventory, returned when the module reads or writes its source settings.
       type: str
     prevent_instance_group_fallback:
       description: Whether instance group fallback is prevented.
