@@ -215,6 +215,16 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
         return params
 
     @classmethod
+    def filter_find_results(cls, list_result: Dict[str, Any], api_data: Any, lookup_field: str, lookup_value: Any) -> Dict[str, Any]:
+        """Keep only rows matching the requested role, user and object.
+
+        Without this, a list response the Gateway did not fully narrow is
+        accepted as an existing assignment, the create is skipped, and the
+        task reports success while the role was never assigned.
+        """
+        return cls.filter_results_by_expected_params(list_result, cls.get_find_list_query_params(api_data))
+
+    @classmethod
     def from_api(
         cls,
         api_data: Dict[str, Any],
